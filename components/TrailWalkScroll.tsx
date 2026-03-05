@@ -10,6 +10,7 @@ interface Props {
 }
 
 const TOTAL_FRAMES = 200;
+const MIN_FRAMES_TO_LOAD = 25; // Number of frames to load before hiding the loader
 
 export default function TrailWalkScroll({ trek }: Props) {
     const wrapperRef = useRef<HTMLDivElement>(null);
@@ -97,29 +98,53 @@ export default function TrailWalkScroll({ trek }: Props) {
         drawFrame(currentFrameRef.current);
     }, [drawFrame]);
 
-    // ── Load 120 frames ─────────────────────────────────────────
+    // ── Load frames sequentially ────────────────────────────────
     useEffect(() => {
+        let isSetup = true;
         loadedCountRef.current = 0;
         imagesRef.current = [];
 
-        for (let i = 1; i <= TOTAL_FRAMES; i++) {
-            const img = new Image();
-            img.src = `${trek.folderPath}/frame-${String(i).padStart(3, "0")}.jpg`;
-            img.onload = () => {
-                loadedCountRef.current += 1;
-                // Update React state for loader safely
-                setLoadedFrames(loadedCountRef.current);
-
-                // Re-draw current frame once its image loads
-                if (i - 1 === currentFrameRef.current) {
-                    drawFrame(currentFrameRef.current);
-                }
-            };
-            imagesRef.current[i - 1] = img;
-        }
-
-        // Initial draw (may be gradient if images not ready)
+        // Initial gradient draw
         drawFrame(0);
+
+        const loadImagesSequentially = async () => {
+            // Load frames sequentially to prioritize early frames for immediate interaction
+            for (let i = 1; i <= TOTAL_FRAMES; i++) {
+                if (!isSetup) break; // Break if unmounted
+
+                await new Promise<void>((resolve) => {
+                    const img = new Image();
+                    // Load the first frame with high priority implicitly by it being first
+                    img.src = `${trek.folderPath}/frame-${String(i).padStart(3, "0")}.jpg`;
+
+                    img.onload = () => {
+                        if (!isSetup) return resolve();
+
+                        loadedCountRef.current += 1;
+                        setLoadedFrames(loadedCountRef.current);
+
+                        // Re-draw current frame once its image loads (if we are on it)
+                        if (i - 1 === currentFrameRef.current) {
+                            drawFrame(currentFrameRef.current);
+                        }
+                        resolve();
+                    };
+
+                    img.onerror = () => {
+                        console.error(`Failed to load frame ${i}`);
+                        resolve(); // Resolve anyway to continue loading the rest
+                    };
+
+                    imagesRef.current[i - 1] = img;
+                });
+            }
+        };
+
+        loadImagesSequentially();
+
+        return () => {
+            isSetup = false;
+        };
     }, [trek.folderPath, drawFrame]);
 
     // ── Setup canvas size + resize listener ─────────────────────
@@ -171,7 +196,7 @@ export default function TrailWalkScroll({ trek }: Props) {
 
                 {/* ── Scrollytelling Loader Overlay ── */}
                 <AnimatePresence>
-                    {loadedFrames < TOTAL_FRAMES && (
+                    {loadedFrames < MIN_FRAMES_TO_LOAD && (
                         <motion.div
                             initial={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
@@ -191,13 +216,13 @@ export default function TrailWalkScroll({ trek }: Props) {
                                         stroke="currentColor" strokeWidth="2" fill="transparent"
                                         className="text-green-400 transition-all duration-300 ease-out"
                                         strokeDasharray={2 * Math.PI * 46}
-                                        strokeDashoffset={2 * Math.PI * 46 * (1 - loadedFrames / TOTAL_FRAMES)}
+                                        strokeDashoffset={2 * Math.PI * 46 * (1 - Math.min(loadedFrames / MIN_FRAMES_TO_LOAD, 1))}
                                     />
                                 </svg>
 
-                                {/* Percenage Text */}
+                                {/* Percenage Text - Now based on MIN_FRAMES_TO_LOAD to reach 100% early */}
                                 <div className="text-white font-semibold text-lg tracking-widest tabular-nums">
-                                    {Math.round((loadedFrames / TOTAL_FRAMES) * 100)}%
+                                    {Math.round(Math.min(loadedFrames / MIN_FRAMES_TO_LOAD, 1) * 100)}%
                                 </div>
                             </div>
 
