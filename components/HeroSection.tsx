@@ -81,6 +81,7 @@ interface Props {
 
 export default function HeroSection({ trek }: Props) {
     const containerRef = useRef<HTMLElement>(null);
+    const videoRef = useRef<HTMLVideoElement>(null);
     const [isVideoLoaded, setIsVideoLoaded] = useState(false);
     const mouseX = useMotionValue(0);
     const mouseY = useMotionValue(0);
@@ -112,6 +113,30 @@ export default function HeroSection({ trek }: Props) {
         mouseY.set(0);
     };
 
+    useEffect(() => {
+        // Reset loading state when trek changes
+        setIsVideoLoaded(false);
+        const video = videoRef.current;
+
+        if (video) {
+            // If the video is already loaded (from cache, or fast connection), 
+            // the onLoadedData event may have already fired before this effect runs.
+            // Check readyState directly: 3 = HAVE_FUTURE_DATA, 4 = HAVE_ENOUGH_DATA
+            if (video.readyState >= 3) {
+                setIsVideoLoaded(true);
+            } else {
+                // Otherwise attach listener
+                const handleLoaded = () => setIsVideoLoaded(true);
+                video.addEventListener("loadeddata", handleLoaded);
+                video.addEventListener("canplay", handleLoaded);
+                return () => {
+                    video.removeEventListener("loadeddata", handleLoaded);
+                    video.removeEventListener("canplay", handleLoaded);
+                };
+            }
+        }
+    }, [trek.id]);
+
     const scrollToDetails = () => {
         document.getElementById("trail-details")?.scrollIntoView({ behavior: "smooth" });
     };
@@ -139,12 +164,12 @@ export default function HeroSection({ trek }: Props) {
                 />
 
                 <video
+                    ref={videoRef}
                     key={trek.id} // Re-mount and autoplay on trek change
                     autoPlay
                     muted
                     loop
                     playsInline
-                    onLoadedData={() => setIsVideoLoaded(true)}
                     className={`absolute inset-0 w-full h-full object-cover z-0 transition-opacity duration-1000 ${isVideoLoaded ? "opacity-80" : "opacity-0"
                         }`}
                 >
