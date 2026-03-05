@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
-import { useScroll, useMotionValueEvent } from "framer-motion";
+import { useEffect, useRef, useCallback, useState } from "react";
+import { useScroll, useMotionValueEvent, AnimatePresence, motion } from "framer-motion";
 import { Trek } from "@/data/treks";
-import TrailMilestones from "./TrailMilestones"
+import TrailMilestones from "./TrailMilestones";
 
 interface Props {
     trek: Trek;
@@ -15,6 +15,10 @@ export default function TrailWalkScroll({ trek }: Props) {
     const wrapperRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const imagesRef = useRef<HTMLImageElement[]>([]);
+
+    // State to drive the loader UI
+    const [loadedFrames, setLoadedFrames] = useState(0);
+
     const loadedCountRef = useRef(0);
     const currentFrameRef = useRef(0);
     const rafRef = useRef<number | null>(null);
@@ -103,6 +107,9 @@ export default function TrailWalkScroll({ trek }: Props) {
             img.src = `${trek.folderPath}/frame-${String(i).padStart(3, "0")}.jpg`;
             img.onload = () => {
                 loadedCountRef.current += 1;
+                // Update React state for loader safely
+                setLoadedFrames(loadedCountRef.current);
+
                 // Re-draw current frame once its image loads
                 if (i - 1 === currentFrameRef.current) {
                     drawFrame(currentFrameRef.current);
@@ -161,6 +168,49 @@ export default function TrailWalkScroll({ trek }: Props) {
 
                 {/* Milestone text overlays */}
                 <TrailMilestones trek={trek} scrollYProgress={scrollYProgress} />
+
+                {/* ── Scrollytelling Loader Overlay ── */}
+                <AnimatePresence>
+                    {loadedFrames < TOTAL_FRAMES && (
+                        <motion.div
+                            initial={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.8, ease: "easeInOut" }}
+                            className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/80 backdrop-blur-md"
+                        >
+                            <div className="relative w-24 h-24 flex items-center justify-center mb-6">
+                                {/* Outer tracking ring */}
+                                <svg className="absolute inset-0 w-full h-full -rotate-90">
+                                    <circle
+                                        cx="48" cy="48" r="46"
+                                        stroke="currentColor" strokeWidth="2" fill="transparent"
+                                        className="text-white/10"
+                                    />
+                                    <circle
+                                        cx="48" cy="48" r="46"
+                                        stroke="currentColor" strokeWidth="2" fill="transparent"
+                                        className="text-green-400 transition-all duration-300 ease-out"
+                                        strokeDasharray={2 * Math.PI * 46}
+                                        strokeDashoffset={2 * Math.PI * 46 * (1 - loadedFrames / TOTAL_FRAMES)}
+                                    />
+                                </svg>
+
+                                {/* Percenage Text */}
+                                <div className="text-white font-semibold text-lg tracking-widest tabular-nums">
+                                    {Math.round((loadedFrames / TOTAL_FRAMES) * 100)}%
+                                </div>
+                            </div>
+
+                            <motion.div
+                                animate={{ opacity: [0.4, 1, 0.4] }}
+                                transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
+                                className="text-green-400/80 text-[10px] font-semibold tracking-[0.3em] uppercase"
+                            >
+                                Loading Trail...
+                            </motion.div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
 
                 {/* Scroll hint */}
                 <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 pointer-events-none">
